@@ -6181,4 +6181,4 @@ docs = ["docutils", "nbsphinx", "nbsphinx-link", "numpydoc", "sphinx", "sphinx-b
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10"
-content-hash = "1278bc881e722b776fff0e4adbdc8282436f3650d21ed10167c38edad18c5bb7"
+content-hash = "7f6b0d8de455dfbf7c12c2fe03f8eba3c903274a213330cbc467535c6f800968"

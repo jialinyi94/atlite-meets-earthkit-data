@@ -256,9 +256,28 @@ def sanitize_runoff(ds):
     return ds
 
 
+def get_data_height(retrieval_params):
+    """
+    Get height data for given retrieval parameters.
+    """
+    retrieval_params["stream"] = "oper"
+    retrieval_params["type"] = "fc"
+    retrieval_params["step"] = 0  # height is only available at step 0
+    ds = retrieve_data(
+        param="z", 
+        levtype="sfc",
+        **retrieval_params
+    )
+
+    ds = _rename_and_clean_coords(ds)
+    ds = era5._add_height(ds)
+
+    return ds
+
+
 if __name__ == "__main__":
     # Example usage
-    ds = get_data_temperature(
+    ds = get_data_height(
         dict(
             model="ifs",
             date=0,

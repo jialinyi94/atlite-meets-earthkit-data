@@ -41,31 +41,65 @@ features = {
 }
 
 
+def _rename_and_clean_coords(ds, add_lon_lat=True):
+    """
+    Rename 'longitude' and 'latitude' columns to 'x' and 'y' and fix roundings.
+
+    Optionally (add_lon_lat, default:True) preserves latitude and
+    longitude columns as 'lat' and 'lon'.
+    """
+    ds = (
+        ds
+        .rename({"time": "forecast_time"})
+        .rename({"longitude": "x", "latitude": "y", "valid_time": "time"})
+    )
+    # round coords since cds coords are float32 which would lead to mismatches
+    ds = ds.assign_coords(
+        x=np.round(ds.x.astype(float), 5), y=np.round(ds.y.astype(float), 5)
+    )
+    ds = era5.maybe_swap_spatial_dims(ds)
+    if add_lon_lat:
+        ds = ds.assign_coords(lon=ds.coords["x"], lat=ds.coords["y"])
+    return ds
+
+
 def get_data_wind(retrieval_params):
     """
     Get wind data for given retrieval parameters.
     """
     ds = retrieve_data(
         param=[
-            "10u", "10v", "100u", "100v"
+            "10u", "10v",
         ],
+        levtype="sfc",
+        heightAboveGround=10,
         **retrieval_params,
     )
-    ds = era5.rename_and_clean_coords(ds)
+    ds_100m = retrieve_data(
+        param=[
+            "100u", "100v",
+        ],
+        levtype="sfc",
+        heightAboveGround=100,
+        **retrieval_params,
+    )
+    ds["u100"] = ds_100m["u100"]
+    ds["v100"] = ds_100m["v100"]
+    ds = _rename_and_clean_coords(ds)
 
     for h in [10, 100]:
-        ds[f"wnd{h}m"] = sqrt(ds[f"{h}u"] ** 2 + ds[f"{h}v"] ** 2).assign_attrs(
-            units=ds[f"{h}u"].attrs["units"], long_name=f"{h} metre wind speed"
+        ds[f"wnd{h}m"] = sqrt(ds[f"u{h}"] ** 2 + ds[f"v{h}"] ** 2).assign_attrs(
+            units=ds[f"u{h}"].attrs["units"], long_name=f"{h} metre wind speed"
         )
     ds["wnd_shear_exp"] = (
         np.log(ds["wnd10m"] / ds["wnd100m"]) / np.log(10 / 100)
     ).assign_attrs(units="", long_name="wind shear exponent")
 
     # span the whole circle: 0 is north, π/2 is east, -π is south, 3π/2 is west
-    azimuth = arctan2(ds["100u"], ds["100v"])
+    azimuth = arctan2(ds["u100"], ds["v100"])
     ds["wnd_azimuth"] = azimuth.where(azimuth >= 0, azimuth + 2 * np.pi)
 
-    ds = ds.drop_vars(["100u", "100v", "10u", "10v", "wnd10m"])
+    ds = ds.drop_vars(["u100", "v100", "u10", "v10", "wnd10m"])
     return ds
 
 
@@ -74,6 +108,7 @@ def retrieve_data(
     chunks: dict[str, int] | None = None,
     tmpdir: str | Path | None = None,
     lock: SerializableLock | None = None,
+    heightAboveGround: int | None = None,
     **updates,
 ) -> xr.Dataset:
     """
@@ -130,15 +165,39 @@ def retrieve_data(
         os.close(fd)
 
         # Inform user about data being downloaded as "* variable (year-month)"
-        timestr = f"{request['year']}-{request['month']}"
-        variables = atleast_1d(request["variable"])
+        timestr = f"ForecastAt: {request['date']}T{request['time']}z, Step: {request['step']}h"
+        variables = atleast_1d(request["param"])
         varstr = "\n\t".join([f"{v} ({timestr})" for v in variables])
         logger.info(f"ECMWF Open-data: Downloading variables\n\t{varstr}\n")
         client.retrieve(model=model,**request, target=target)
     
-    ds = xr.open_dataset(target, decode_timedelta=True, engine="cfgrib")
-    if tmpdir is None:
-        era5.add_finalizer(target)
-    
+    if heightAboveGround is not None:
+        backend_kwargs = {
+            'filter_by_keys':{
+                'typeOfLevel': 'heightAboveGround',
+                'level': heightAboveGround
+            }
+        }
+    else:
+        backend_kwargs = None
+
+    ds = xr.open_dataset(
+        target, 
+        decode_timedelta=True, 
+        engine="cfgrib",
+        backend_kwargs=backend_kwargs,
+    ).drop_vars("heightAboveGround")
     return ds
 
+
+if __name__ == "__main__":
+    # Example usage
+    ds = get_data_wind(
+        dict(
+            model="ifs",
+            date=0,
+            time=6,
+            step=24,
+        )
+    )
+    print(ds)

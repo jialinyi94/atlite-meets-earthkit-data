@@ -232,6 +232,30 @@ def get_data_temperature(retrieval_params):
     return ds
 
 
+def get_data_runoff(retrieval_params):
+    """
+    Get runoff data for given retrieval parameters.
+    """
+    ds = retrieve_data(
+        param="ro",
+        levtype="sfc",
+        **retrieval_params
+    )
+
+    ds = _rename_and_clean_coords(ds)
+    ds = ds.rename({"ro": "runoff"})
+
+    return ds
+
+
+def sanitize_runoff(ds):
+    """
+    Sanitize retrieved runoff data.
+    """
+    ds["runoff"] = ds["runoff"].clip(min=0.0)
+    return ds
+
+
 if __name__ == "__main__":
     # Example usage
     ds = get_data_temperature(

@@ -323,8 +323,7 @@ def get_data(
         step_chunks = [step]
     else:
         step_chunks = step
-    forecast_time = pd.to_datetime(cutout.coords["time"].values)
-    coords = cutout.coords
+    forecast_time = pd.Timestamp(cutout.coords["time"].item())
     time = forecast_time.hour
     assert time in (0, 6, 12, 18), "ECMWF Open-data only provides forecasts for 00, 06, 12, 18 UTC"
 
@@ -359,7 +358,13 @@ def get_data(
     else:
         datasets = map(retrieve_once, step_chunks)
 
-    return xr.concat(datasets, dim="time")
+    ds = xr.concat(datasets, dim="time")
+    coords = cutout.coords
+    ds = ds.sel(
+        x=slice(coords["x"].min().item(), coords["x"].max().item()),
+        y=slice(coords["y"].min().item(), coords["y"].max().item()),
+    )
+    return ds
 
 if __name__ == "__main__":
     # Example usage

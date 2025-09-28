@@ -202,9 +202,39 @@ def sanitize_influx(ds):
     return ds
 
 
+def get_data_temperature(retrieval_params):
+    """
+    Get wind temperature for given retrieval parameters.
+    """
+    ds = retrieve_data(
+        param=[
+            "2t", "2d",
+        ],
+        levtype="sfc",
+        **retrieval_params,
+    )
+
+    ds_ = retrieve_data(
+        param="sot", # soil temperature
+        levtype="sol",
+        **retrieval_params,
+    )
+    ds["stl4"] = ds_["sot"].sel(soilLayer=4.0, drop=True)
+
+    ds = _rename_and_clean_coords(ds)
+    ds = ds.rename(
+        {
+            "t2m": "temperature",
+            "stl4": "soil temperature",
+            "d2m": "dewpoint temperature",
+        }
+    )
+    return ds
+
+
 if __name__ == "__main__":
     # Example usage
-    ds = get_data_influx(
+    ds = get_data_temperature(
         dict(
             model="ifs",
             date=0,

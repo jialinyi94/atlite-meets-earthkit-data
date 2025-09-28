@@ -9,6 +9,8 @@ from pathlib import Path
 from tempfile import mkstemp
 from numpy import atleast_1d
 from dask.utils import SerializableLock
+from dask.array import sqrt, arctan2
+import numpy as np
 import xarray as xr
 import atlite.datasets.era5 as era5
 from ecmwf.opendata import Client
@@ -37,6 +39,34 @@ features = {
     "temperature": ["temperature", "soil temperature", "dewpoint temperature"],
     "runoff": ["runoff"],
 }
+
+
+def get_data_wind(retrieval_params):
+    """
+    Get wind data for given retrieval parameters.
+    """
+    ds = retrieve_data(
+        param=[
+            "10u", "10v", "100u", "100v"
+        ],
+        **retrieval_params,
+    )
+    ds = era5.rename_and_clean_coords(ds)
+
+    for h in [10, 100]:
+        ds[f"wnd{h}m"] = sqrt(ds[f"{h}u"] ** 2 + ds[f"{h}v"] ** 2).assign_attrs(
+            units=ds[f"{h}u"].attrs["units"], long_name=f"{h} metre wind speed"
+        )
+    ds["wnd_shear_exp"] = (
+        np.log(ds["wnd10m"] / ds["wnd100m"]) / np.log(10 / 100)
+    ).assign_attrs(units="", long_name="wind shear exponent")
+
+    # span the whole circle: 0 is north, π/2 is east, -π is south, 3π/2 is west
+    azimuth = arctan2(ds["100u"], ds["100v"])
+    ds["wnd_azimuth"] = azimuth.where(azimuth >= 0, azimuth + 2 * np.pi)
+
+    ds = ds.drop_vars(["100u", "100v", "10u", "10v", "wnd10m"])
+    return ds
 
 
 def retrieve_data(

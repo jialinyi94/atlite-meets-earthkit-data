@@ -98,6 +98,26 @@ def sanitize_wind(ds):
     return ds
 
 
+def get_data_influx(retrieval_params):
+    """
+    Get influx data for given retrieval parameters.
+    """
+    ds = retrieve_data(
+        param=["ssrd", "ssr"],
+        levtype="sfc",
+        **retrieval_params,
+    )
+
+    ds = _rename_and_clean_coords(ds)
+    ds["albedo"] = (
+        ((ds["ssrd"] - ds["ssr"]) / ds["ssrd"].where(ds["ssrd"] != 0))
+        .fillna(0.0)
+        .assign_attrs(units="(0 - 1)", long_name="Albedo")
+    )
+    ds = ds.drop_vars("ssr")
+    return ds
+
+
 def retrieve_data(
     model: str,
     chunks: dict[str, int] | None = None,
@@ -175,7 +195,7 @@ def retrieve_data(
 
 if __name__ == "__main__":
     # Example usage
-    ds = get_data_wind(
+    ds = get_data_influx(
         dict(
             model="ifs",
             date=0,

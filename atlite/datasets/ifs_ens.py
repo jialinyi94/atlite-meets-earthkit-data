@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import atlite
-import atlite.datasets.era5 as era5
+import era5
 from ecmwf.opendata import Client
 
 # Null context for running a with statements wihout any context
@@ -44,6 +44,8 @@ features = {
 }
 
 static_features = era5.static_features
+
+crs = era5.crs
 
 
 def _rename_and_clean_coords(ds, add_lon_lat=True):
@@ -281,7 +283,7 @@ def get_data_height(retrieval_params):
 
 
 def get_data(
-    cutout: atlite.Cutout,
+    cutout,
     feature: str,
     tmpdir: str | Path | None,
     lock=None,
@@ -369,8 +371,8 @@ def get_data(
 if __name__ == "__main__":
     # Example usage
     cutout = atlite.Cutout(
-        path="western-europe-203-09-22.nc",
-        module="era5",
+        path="test_ifs_ens.nc",
+        module="ifs_ens",
         x=slice(-13.6913, 1.7712),
         y=slice(49.9096, 60.8479),
         time="2025-09-28 06:00",

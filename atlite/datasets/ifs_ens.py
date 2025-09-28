@@ -289,7 +289,7 @@ def get_data(
     **creation_parameters,
 ):
     """
-    Retrieve data from ECMWFs Open-data dataset.
+    Retrieve data from ECMWF's IFS ensemble dataset.
 
     This front-end function downloads data for a specific feature and formats
     it to match the given Cutout.
@@ -299,7 +299,7 @@ def get_data(
     cutout : atlite.Cutout
     feature : str
         Name of the feature data to retrieve. Must be in
-        `atlite.datasets.ecmwf_opendata.features`
+        `atlite.datasets.ifs_ens.features`
     tmpdir : str/Path
         Directory where the temporary netcdf files are stored.
     concurrent_requests : bool, optional

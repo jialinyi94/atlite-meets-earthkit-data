@@ -193,6 +193,15 @@ def retrieve_data(
     return ds
 
 
+def sanitize_influx(ds):
+    """
+    Sanitize retrieved influx data.
+    """
+    for a in ("ssrd", "albedo"):
+        ds[a] = ds[a].clip(min=0.0)
+    return ds
+
+
 if __name__ == "__main__":
     # Example usage
     ds = get_data_influx(

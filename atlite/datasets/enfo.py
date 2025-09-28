@@ -91,6 +91,13 @@ def get_data_wind(retrieval_params):
     return ds
 
 
+def sanitize_wind(ds):
+    """
+    Sanitize retrieved wind data. (No roughness from ECMWF Open-data API)
+    """
+    return ds
+
+
 def retrieve_data(
     model: str,
     chunks: dict[str, int] | None = None,

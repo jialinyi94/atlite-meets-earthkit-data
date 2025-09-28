@@ -359,7 +359,7 @@ def get_data(
     else:
         datasets = map(retrieve_once, step_chunks)
 
-    return xr.concat(datasets, dim="time").sel(time=coords["time"])
+    return xr.concat(datasets, dim="time")
 
 if __name__ == "__main__":
     # Example usage
@@ -371,7 +371,7 @@ if __name__ == "__main__":
         time="2025-09-28 06:00",
     )
     create_parameters = dict(
-        step=[0, 6, 12, 18],
+        step=[0, 18],
         sanitize=True,
     )
 

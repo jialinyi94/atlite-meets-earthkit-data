@@ -50,7 +50,6 @@ def _rename_and_clean_coords(ds, add_lon_lat=True):
     """
     ds = (
         ds
-        .rename({"time": "forecast_time"})
         .rename({"longitude": "x", "latitude": "y", "valid_time": "time"})
     )
     # round coords since cds coords are float32 which would lead to mismatches
@@ -69,22 +68,11 @@ def get_data_wind(retrieval_params):
     """
     ds = retrieve_data(
         param=[
-            "10u", "10v",
+            "10u", "10v", "100u", "100v",
         ],
         levtype="sfc",
-        heightAboveGround=10,
         **retrieval_params,
     )
-    ds_100m = retrieve_data(
-        param=[
-            "100u", "100v",
-        ],
-        levtype="sfc",
-        heightAboveGround=100,
-        **retrieval_params,
-    )
-    ds["u100"] = ds_100m["u100"]
-    ds["v100"] = ds_100m["v100"]
     ds = _rename_and_clean_coords(ds)
 
     for h in [10, 100]:
@@ -108,7 +96,6 @@ def retrieve_data(
     chunks: dict[str, int] | None = None,
     tmpdir: str | Path | None = None,
     lock: SerializableLock | None = None,
-    heightAboveGround: int | None = None,
     **updates,
 ) -> xr.Dataset:
     """
@@ -170,23 +157,12 @@ def retrieve_data(
         varstr = "\n\t".join([f"{v} ({timestr})" for v in variables])
         logger.info(f"ECMWF Open-data: Downloading variables\n\t{varstr}\n")
         client.retrieve(model=model,**request, target=target)
-    
-    if heightAboveGround is not None:
-        backend_kwargs = {
-            'filter_by_keys':{
-                'typeOfLevel': 'heightAboveGround',
-                'level': heightAboveGround
-            }
-        }
-    else:
-        backend_kwargs = None
 
-    ds = xr.open_dataset(
-        target, 
-        decode_timedelta=True, 
-        engine="cfgrib",
-        backend_kwargs=backend_kwargs,
-    ).drop_vars("heightAboveGround")
+    ds = era5.open_with_grib_conventions(
+        target,
+        chunks=chunks,
+        tmpdir=tmpdir,
+    )
     return ds
 
 

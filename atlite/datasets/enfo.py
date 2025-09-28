@@ -8,10 +8,13 @@ import os
 from pathlib import Path
 from tempfile import mkstemp
 from numpy import atleast_1d
+from dask import compute, delayed
 from dask.utils import SerializableLock
 from dask.array import sqrt, arctan2
 import numpy as np
+import pandas as pd
 import xarray as xr
+import atlite
 import atlite.datasets.era5 as era5
 from ecmwf.opendata import Client
 
@@ -39,6 +42,8 @@ features = {
     "temperature": ["temperature", "soil temperature", "dewpoint temperature"],
     "runoff": ["runoff"],
 }
+
+static_features = era5.static_features
 
 
 def _rename_and_clean_coords(ds, add_lon_lat=True):
@@ -275,14 +280,106 @@ def get_data_height(retrieval_params):
     return ds
 
 
+def get_data(
+    cutout: atlite.Cutout,
+    feature: str,
+    tmpdir: str | Path | None,
+    lock=None,
+    concurrent_requests=False,
+    **creation_parameters,
+):
+    """
+    Retrieve data from ECMWFs Open-data dataset.
+
+    This front-end function downloads data for a specific feature and formats
+    it to match the given Cutout.
+
+    Parameters
+    ----------
+    cutout : atlite.Cutout
+    feature : str
+        Name of the feature data to retrieve. Must be in
+        `atlite.datasets.ecmwf_opendata.features`
+    tmpdir : str/Path
+        Directory where the temporary netcdf files are stored.
+    concurrent_requests : bool, optional
+        If True, the monthly data requests are posted concurrently.
+        Only has an effect if `monthly_requests` is True.
+    **creation_parameters :
+        Additional keyword arguments. The only effective argument is 'sanitize'
+        (default True) which sets sanitization of the data on or off.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset of dask arrays of the retrieved variables.
+
+    """
+    assert "step" in creation_parameters, (
+        "Need to specify 'step' in cutout creation parameters"
+    )
+    step = creation_parameters["step"]
+    if isinstance(step, int):
+        step_chunks = [step]
+    else:
+        step_chunks = step
+    forecast_time = pd.to_datetime(cutout.coords["time"].values)
+    coords = cutout.coords
+    time = forecast_time.hour
+    assert time in (0, 6, 12, 18), "ECMWF Open-data only provides forecasts for 00, 06, 12, 18 UTC"
+
+    sanitize = creation_parameters.get("sanitize", True)
+
+    retrieval_params = {
+        "model": creation_parameters.get("model", "ifs"),
+        "chunks": cutout.chunks,
+        "tmpdir": tmpdir,
+        "lock": lock,
+        "date": forecast_time.date(),
+        "time": time,
+    }
+
+    func = globals().get(f"get_data_{feature}")
+    sanitize_func = globals().get(f"sanitize_{feature}")
+
+    logger.info(f"Requesting data for feature {feature}...")
+
+    def retrieve_once(step):
+        ds = func({**retrieval_params, "step": step})
+        if sanitize and sanitize_func is not None:
+            ds = sanitize_func(ds)
+        return ds
+
+    if feature in static_features:
+        return retrieve_once(step_chunks[0]).squeeze()
+
+    if concurrent_requests:
+        delayed_datasets = [delayed(retrieve_once)(chunk) for chunk in step_chunks]
+        datasets = compute(*delayed_datasets)
+    else:
+        datasets = map(retrieve_once, step_chunks)
+
+    return xr.concat(datasets, dim="time").sel(time=coords["time"])
+
 if __name__ == "__main__":
     # Example usage
-    ds = get_data_height(
-        dict(
-            model="ifs",
-            date=0,
-            time=6,
-            step=24,
-        )
+    cutout = atlite.Cutout(
+        path="western-europe-203-09-22.nc",
+        module="era5",
+        x=slice(-13.6913, 1.7712),
+        y=slice(49.9096, 60.8479),
+        time="2025-09-28 06:00",
+    )
+    create_parameters = dict(
+        step=[0, 6, 12, 18],
+        sanitize=True,
+    )
+
+    ds = get_data(
+        cutout,
+        feature="influx",
+        tmpdir=None,
+        concurrent_requests=False,
+        **create_parameters,
     )
     print(ds)

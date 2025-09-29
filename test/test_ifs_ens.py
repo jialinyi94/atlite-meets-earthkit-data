@@ -1,5 +1,6 @@
-import atlite
 import pandas as pd
+
+import atlite
 
 init_time = pd.Timestamp.now().normalize()
 lead_time = pd.Timedelta("10D")

@@ -1,4 +1,10 @@
 import atlite
+import pandas as pd
+
+init_time = pd.Timestamp.now().normalize()
+lead_time = pd.Timedelta("10D")
+valid_time = init_time + lead_time
+cycle = 0
 
 
 def test_ifs_ens_cutout_creation():
@@ -7,7 +13,9 @@ def test_ifs_ens_cutout_creation():
         path="test-ifs_ens.nc",
         module="ifs_ens",
         bounds=(-4, 56, 1.5, 62),
-        time="2023-01-01",
+        time=valid_time.strftime("%Y-%m-%d"),  # the valid date of the forecast
+        init_time=init_time.strftime("%Y-%m-%d"),  # the initial date of the forecast
+        cycle=cycle,
     )
     assert cutout.module == ["ifs_ens"]
 

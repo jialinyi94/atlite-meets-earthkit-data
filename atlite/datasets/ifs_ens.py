@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Contributors to atlite-meets-earthkit-data <https://github.com/jialinyi94/atlite-meets-earthkit-data>
+#
+# SPDX-License-Identifier: MIT
 """
 Module for downloading and curating data from ECMWF's ensemble forecast
 (via ECMWF's open-data API).

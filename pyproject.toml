@@ -80,6 +80,11 @@ version_scheme = "no-guess-dev"
 [tool.setuptools.packages.find]
 include = ["atlite"]
 
+# Poetry settings
+
+[tool.poetry]
+version = "0.0.0"  # This will be overridden by setuptools_scm
+
 # Formatter and linter settings
 
 [tool.ruff]
@@ -122,4 +127,9 @@ ignore = [
     'D415', # First line should end with a period, question mark, or exclamation point
     'D417', # Missing argument descriptions in the docstring
 
+]
+
+[dependency-groups]
+examples = [
+    "pgeocode (>=0.5.0,<0.6.0)"
 ]

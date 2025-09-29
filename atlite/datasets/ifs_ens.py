@@ -3,20 +3,22 @@ Module for downloading and curating data from ECMWF's ensemble forecast
 (via ECMWF's open-data API).
 
 """
+
 import logging
 import os
 from pathlib import Path
 from tempfile import mkstemp
-from numpy import atleast_1d
-from dask import compute, delayed
-from dask.utils import SerializableLock
-from dask.array import sqrt, arctan2
+
 import numpy as np
 import pandas as pd
 import xarray as xr
-import atlite
-import atlite.datasets.era5 as era5
+from dask import compute, delayed
+from dask.array import arctan2, sqrt
+from dask.utils import SerializableLock
 from ecmwf.opendata import Client
+from numpy import atleast_1d
+
+import atlite.datasets.era5 as era5
 
 # Null context for running a with statements wihout any context
 try:
@@ -28,6 +30,7 @@ except ImportError:
     @contextlib.contextmanager
     def nullcontext():
         yield
+
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +52,9 @@ crs = era5.crs
 
 
 def get_ecmwf_ifs_steps_hours(cycle: int):
-    first = list(range(0, 144+1, 3))
+    first = list(range(0, 144 + 1, 3))
     if cycle in [0, 12]:
-        second = list(range(150, 360+1, 6))
+        second = list(range(150, 360 + 1, 6))
         return first + second
     elif cycle in [6, 18]:
         return first
@@ -64,10 +67,7 @@ def _rename_and_clean_coords(ds, add_lon_lat=True):
     Optionally (add_lon_lat, default:True) preserves latitude and
     longitude columns as 'lat' and 'lon'.
     """
-    ds = (
-        ds
-        .rename({"longitude": "x", "latitude": "y", "valid_time": "time"})
-    )
+    ds = ds.rename({"longitude": "x", "latitude": "y", "valid_time": "time"})
     # round coords since cds coords are float32 which would lead to mismatches
     ds = ds.assign_coords(
         x=np.round(ds.x.astype(float), 5), y=np.round(ds.y.astype(float), 5)
@@ -84,7 +84,10 @@ def get_data_wind(retrieval_params):
     """
     ds = retrieve_data(
         param=[
-            "10u", "10v", "100u", "100v",
+            "10u",
+            "10v",
+            "100u",
+            "100v",
         ],
         levtype="sfc",
         **retrieval_params,
@@ -199,7 +202,7 @@ def retrieve_data(
         variables = atleast_1d(request["param"])
         varstr = "\n\t".join([f"{v} ({timestr})" for v in variables])
         logger.info(f"ECMWF Open-data: Downloading variables\n\t{varstr}\n")
-        client.retrieve(model=model,**request, target=target)
+        client.retrieve(model=model, **request, target=target)
 
     ds = era5.open_with_grib_conventions(
         target,
@@ -224,14 +227,15 @@ def get_data_temperature(retrieval_params):
     """
     ds = retrieve_data(
         param=[
-            "2t", "2d",
+            "2t",
+            "2d",
         ],
         levtype="sfc",
         **retrieval_params,
     )
 
     ds_ = retrieve_data(
-        param="sot", # soil temperature
+        param="sot",  # soil temperature
         levtype="sol",
         **retrieval_params,
     )
@@ -252,11 +256,7 @@ def get_data_runoff(retrieval_params):
     """
     Get runoff data for given retrieval parameters.
     """
-    ds = retrieve_data(
-        param="ro",
-        levtype="sfc",
-        **retrieval_params
-    )
+    ds = retrieve_data(param="ro", levtype="sfc", **retrieval_params)
 
     ds = _rename_and_clean_coords(ds)
     ds = ds.rename({"ro": "runoff"})
@@ -279,11 +279,7 @@ def get_data_height(retrieval_params):
     retrieval_params["stream"] = "oper"
     retrieval_params["type"] = "fc"
     retrieval_params["step"] = 0  # height is only available at step 0
-    ds = retrieve_data(
-        param="z", 
-        levtype="sfc",
-        **retrieval_params
-    )
+    ds = retrieve_data(param="z", levtype="sfc", **retrieval_params)
 
     ds = _rename_and_clean_coords(ds)
     ds = era5._add_height(ds)
@@ -333,7 +329,9 @@ def get_data(
     maybe_steps = ((maybe_valid_times - init_time).total_seconds() / 3600).astype(int)
     step_chunks = maybe_steps[np.isin(maybe_steps, get_ecmwf_ifs_steps_hours(cycle))]
 
-    assert cycle in (0, 6, 12, 18), "ECMWF Open-data only provides forecast cycle for 00, 06, 12, 18 UTC"
+    assert cycle in (0, 6, 12, 18), (
+        "ECMWF Open-data only provides forecast cycle for 00, 06, 12, 18 UTC"
+    )
 
     sanitize = creation_parameters.get("sanitize", True)
 
@@ -356,13 +354,17 @@ def get_data(
         if sanitize and sanitize_func is not None:
             ds = sanitize_func(ds)
         return ds
-    
+
     coords = cutout.coords
 
     if feature in static_features:
-        return retrieve_once(step_chunks[0]).squeeze().sel(
-            x=slice(coords["x"].min().item(), coords["x"].max().item()),
-            y=slice(coords["y"].min().item(), coords["y"].max().item()),
+        return (
+            retrieve_once(step_chunks[0])
+            .squeeze()
+            .sel(
+                x=slice(coords["x"].min().item(), coords["x"].max().item()),
+                y=slice(coords["y"].min().item(), coords["y"].max().item()),
+            )
         )
 
     if concurrent_requests:
@@ -372,12 +374,13 @@ def get_data(
         datasets = map(retrieve_once, step_chunks)
 
     ds = xr.concat(datasets, dim="time")
-    
+
     ds = ds.sel(
         x=slice(coords["x"].min().item(), coords["x"].max().item()),
         y=slice(coords["y"].min().item(), coords["y"].max().item()),
     )
     return ds
+
 
 if __name__ == "__main__":
     pass

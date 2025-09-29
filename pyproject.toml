@@ -131,5 +131,6 @@ ignore = [
 
 [dependency-groups]
 examples = [
-    "pgeocode (>=0.5.0,<0.6.0)"
+    "pgeocode (>=0.5.0,<0.6.0)",
+    "seaborn (>=0.13.2,<0.14.0)"
 ]

@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import atlite
-import era5
+import atlite.datasets.era5 as era5
 from ecmwf.opendata import Client
 
 # Null context for running a with statements wihout any context
@@ -350,9 +350,14 @@ def get_data(
         if sanitize and sanitize_func is not None:
             ds = sanitize_func(ds)
         return ds
+    
+    coords = cutout.coords
 
     if feature in static_features:
-        return retrieve_once(step_chunks[0]).squeeze()
+        return retrieve_once(step_chunks[0]).squeeze().sel(
+            x=slice(coords["x"].min().item(), coords["x"].max().item()),
+            y=slice(coords["y"].min().item(), coords["y"].max().item()),
+        )
 
     if concurrent_requests:
         delayed_datasets = [delayed(retrieve_once)(chunk) for chunk in step_chunks]
@@ -361,7 +366,7 @@ def get_data(
         datasets = map(retrieve_once, step_chunks)
 
     ds = xr.concat(datasets, dim="time")
-    coords = cutout.coords
+    
     ds = ds.sel(
         x=slice(coords["x"].min().item(), coords["x"].max().item()),
         y=slice(coords["y"].min().item(), coords["y"].max().item()),

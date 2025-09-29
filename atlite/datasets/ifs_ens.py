@@ -380,24 +380,4 @@ def get_data(
     return ds
 
 if __name__ == "__main__":
-    # Example usage
-    cutout = atlite.Cutout(
-        path="test_ifs_ens.nc",
-        module="ifs_ens",
-        x=slice(-13.6913, 1.7712),
-        y=slice(49.9096, 60.8479),
-        time="2025-09-28 06:00",
-    )
-    create_parameters = dict(
-        step=[0, 18],
-        sanitize=True,
-    )
-
-    ds = get_data(
-        cutout,
-        feature="influx",
-        tmpdir=None,
-        concurrent_requests=False,
-        **create_parameters,
-    )
-    print(ds)
+    pass

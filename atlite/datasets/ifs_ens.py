@@ -48,6 +48,15 @@ static_features = era5.static_features
 crs = era5.crs
 
 
+def get_ecmwf_ifs_steps_hours(cycle: int):
+    first = list(range(0, 144+1, 3))
+    if cycle in [0, 12]:
+        second = list(range(150, 360+1, 6))
+        return first + second
+    elif cycle in [6, 18]:
+        return first
+
+
 def _rename_and_clean_coords(ds, add_lon_lat=True):
     """
     Rename 'longitude' and 'latitude' columns to 'x' and 'y' and fix roundings.
@@ -317,17 +326,14 @@ def get_data(
         Dataset of dask arrays of the retrieved variables.
 
     """
-    assert "step" in creation_parameters, (
-        "Need to specify 'step' in cutout creation parameters"
-    )
-    step = creation_parameters["step"]
-    if isinstance(step, int):
-        step_chunks = [step]
-    else:
-        step_chunks = step
-    forecast_time = pd.Timestamp(cutout.coords["time"].item())
-    time = forecast_time.hour
-    assert time in (0, 6, 12, 18), "ECMWF Open-data only provides forecasts for 00, 06, 12, 18 UTC"
+    init_date = creation_parameters["init_time"]
+    cycle = creation_parameters.get("cycle", 0)
+    init_time = pd.Timestamp(init_date) + pd.Timedelta(hours=cycle)
+    maybe_valid_times = pd.to_datetime(cutout.coords["time"].values)
+    maybe_steps = ((maybe_valid_times - init_time).total_seconds() / 3600).astype(int)
+    step_chunks = maybe_steps[np.isin(maybe_steps, get_ecmwf_ifs_steps_hours(cycle))]
+
+    assert cycle in (0, 6, 12, 18), "ECMWF Open-data only provides forecast cycle for 00, 06, 12, 18 UTC"
 
     sanitize = creation_parameters.get("sanitize", True)
 
@@ -336,8 +342,8 @@ def get_data(
         "chunks": cutout.chunks,
         "tmpdir": tmpdir,
         "lock": lock,
-        "date": forecast_time.date(),
-        "time": time,
+        "date": init_date,
+        "time": cycle,
     }
 
     func = globals().get(f"get_data_{feature}")

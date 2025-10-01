@@ -33,6 +33,6 @@ def test_ifs_ens_features():
     assert "temperature" in features
 
 def test_ifs_ens_influx_data():
-    cutout.prepare("influx")
+    cutout.prepare("influx", show_progress=True)
     ds = cutout.data
     assert "influx_toa" in ds

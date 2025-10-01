@@ -11,7 +11,7 @@ import logging
 import os
 from pathlib import Path
 from tempfile import mkstemp
-
+import warnings
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -19,9 +19,11 @@ from dask import compute, delayed
 from dask.array import arctan2, sqrt
 from dask.utils import SerializableLock
 from ecmwf.opendata import Client
+import cdsapi
 from numpy import atleast_1d
 
 import atlite.datasets.era5 as era5
+from atlite.pv.solar_position import SolarPosition
 
 # Null context for running a with statements wihout any context
 try:
@@ -42,8 +44,12 @@ features = {
     "height": ["height"],
     "wind": ["wnd100m", "wnd_shear_exp", "wnd_azimuth"],
     "influx": [
-        "ssrd",
+        "influx_toa",
+        "influx_direct",
+        "influx_diffuse",
         "albedo",
+        "solar_altitude",
+        "solar_azimuth",
     ],
     "temperature": ["temperature", "soil temperature", "dewpoint temperature"],
     "runoff": ["runoff"],
@@ -61,6 +67,9 @@ def get_ecmwf_ifs_steps_hours(cycle: int):
         return first + second
     elif cycle in [6, 18]:
         return first
+    
+def get_cams_steps_hours(cycle: int):
+    return list(range(0, 121, 1))
 
 
 def _rename_and_clean_coords(ds, add_lon_lat=True):
@@ -124,19 +133,58 @@ def get_data_influx(retrieval_params):
     """
     Get influx data for given retrieval parameters.
     """
-    ds = retrieve_data(
-        param=["ssrd", "ssr"],
-        levtype="sfc",
+    init_time = retrieval_params.pop("date")
+    cycle = retrieval_params.pop("time")
+    step = retrieval_params.pop("step")
+    assert step <= 120, "CAMS data only available up to 120h lead time!"
+    retrieval_params.update(
+        dict(
+            date=f'{init_time}/{init_time}',
+            time=[f"{cycle:02d}:00"],
+            leadtime_hour=[str(step)],
+        )
+    )
+    ds = retrieve_cams_data(
+        product="cams-global-atmospheric-composition-forecasts",
+        variable=[
+            "surface_net_solar_radiation",
+            "surface_solar_radiation_downwards",
+            "toa_incident_solar_radiation",
+            "total_sky_direct_solar_radiation_at_surface",
+        ],
         **retrieval_params,
     )
 
     ds = _rename_and_clean_coords(ds)
+
+    ds = ds.rename({"fdir": "influx_direct", "tisr": "influx_toa"})
     ds["albedo"] = (
         ((ds["ssrd"] - ds["ssr"]) / ds["ssrd"].where(ds["ssrd"] != 0))
         .fillna(0.0)
         .assign_attrs(units="(0 - 1)", long_name="Albedo")
     )
-    ds = ds.drop_vars("ssr")
+    ds["influx_diffuse"] = (ds["ssrd"] - ds["influx_direct"]).assign_attrs(
+        units="J m**-2", long_name="Surface diffuse solar radiation downwards"
+    )
+    ds = ds.drop_vars(["ssrd", "ssr"])
+
+    # Convert from energy to power J m**-2 -> W m**-2 and clip negative fluxes
+    for a in ("influx_direct", "influx_diffuse", "influx_toa"):
+        ds[a] = ds[a] / (60.0 * 60.0)
+        ds[a].attrs["units"] = "W m**-2"
+
+    # ERA5 variables are mean values for previous hour, i.e. 13:01 to 14:00 are labelled as "14:00"
+    # account by calculating the SolarPosition for the center of the interval for aggregation happens
+    # see https://github.com/PyPSA/atlite/issues/158
+    # Do not show DeprecationWarning from new SolarPosition calculation (#199)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        time_shift = pd.to_timedelta("-30 minutes")
+        sp = SolarPosition(ds, time_shift=time_shift)
+    sp = sp.rename({v: f"solar_{v}" for v in sp.data_vars})
+
+    ds = xr.merge([ds, sp])
+
     return ds
 
 
@@ -215,14 +263,100 @@ def retrieve_data(
     return ds
 
 
-def sanitize_influx(ds):
+def retrieve_cams_data(
+    product: str,
+    chunks: dict[str, int] | None = None,
+    tmpdir: str | Path | None = None,
+    lock: SerializableLock | None = None,
+    **updates,
+) -> xr.Dataset:
     """
-    Sanitize retrieved influx data.
+    Download data like CAMS from the Atmosphere Data Store (ADS).
+
+    If you want to track the state of your request go to
+    https://ads.atmosphere.copernicus.eu/requests?tab=all
+
+    Parameters
+    ----------
+    product : str
+        Product name, e.g. 'cams-global-atmospheric-composition-forecasts'.
+    chunks : dict, optional
+        Chunking for xarray dataset, e.g. {'time': 1, 'x': 100, 'y': 100}.
+        Default is None.
+    tmpdir : str, optional
+        Directory where the downloaded data is temporarily stored.
+        Default is None, which uses the system's temporary directory.
+    lock : dask.utils.SerializableLock, optional
+        Lock for thread-safe file writing. Default is None.
+    updates : dict
+        Additional parameters for the request.
+        Must include 'year', 'month', and 'variable'.
+        Can include e.g. 'data_format'.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset with the retrieved variables.
+
+    Examples
+    --------
+    >>> ds = retrieve_data(
+    ...     product='cams-global-atmospheric-composition-forecasts',
+    ...     chunks={'time': 1, 'x': 100, 'y': 100},
+    ...     tmpdir='/tmp',
+    ...     lock=None,
+    ...     date='2025-10-01/2025-10-01',
+    ...     time=['00:00'],
+    ...     leadtime_hour=["0", "3", "6", "9", "12"],
+    ...     variable=['10m_u_component_of_wind', '10m_v_component_of_wind'],
+    ...     data_format='grib'
+    ... )
     """
-    for a in ("ssrd", "albedo"):
-        ds[a] = ds[a].clip(min=0.0)
+    request = {"type": ["forecast"], "data_format": "grib"}
+    request.update(
+        {
+            k: v
+            for k, v in updates.items() if k not in [
+                'model',
+            ]
+        }
+    )
+
+    assert {"date", "time", "leadtime_hour"}.issubset(request), (
+        "Need to specify at least 'date', 'time' and 'leadtime_hour' in request"
+    )
+
+    logger.info(f"Requesting {product} with API request: {request}")
+
+    client = cdsapi.Client(
+        url="https://ads.atmosphere.copernicus.eu/api",
+        info_callback=logger.debug, debug=logging.DEBUG >= logging.root.level
+    )
+    result = client.retrieve(product, request)
+
+    if lock is None:
+        lock = nullcontext()
+
+    suffix = f".{request['data_format']}"  # .netcdf or .grib
+    with lock:
+        fd, target = mkstemp(suffix=suffix, dir=tmpdir)
+        os.close(fd)
+
+        # Inform user about data being downloaded as "* variable (year-month)"
+        timestr = f"{request['date']}"
+        variables = atleast_1d(request["variable"])
+        varstr = "\n\t".join([f"{v} ({timestr})" for v in variables])
+        logger.info(f"ADS: Downloading variables\n\t{varstr}\n")
+        result.download(target)
+
+    ds = era5.open_with_grib_conventions(
+        target,
+        chunks=chunks,
+        tmpdir=tmpdir,
+    )
     return ds
 
+sanitize_influx = era5.sanitize_influx
 
 def get_data_temperature(retrieval_params):
     """
@@ -330,11 +464,20 @@ def get_data(
     init_time = pd.Timestamp(init_date) + pd.Timedelta(hours=cycle)
     maybe_valid_times = pd.to_datetime(cutout.coords["time"].values)
     maybe_steps = ((maybe_valid_times - init_time).total_seconds() / 3600).astype(int)
-    step_chunks = maybe_steps[np.isin(maybe_steps, get_ecmwf_ifs_steps_hours(cycle))]
+    
+    if feature == "influx":
+        step_chunks = maybe_steps[np.isin(maybe_steps, get_cams_steps_hours(cycle))]
+    else:
+        step_chunks = maybe_steps[np.isin(maybe_steps, get_ecmwf_ifs_steps_hours(cycle))]
 
-    assert cycle in (0, 6, 12, 18), (
-        "ECMWF Open-data only provides forecast cycle for 00, 06, 12, 18 UTC"
-    )
+    if feature == "influx":
+        assert cycle in (0, 12), (
+            "CAMS data only provides forecast cycle for 00, 12 UTC"
+        )
+    else:
+        assert cycle in (0, 6, 12, 18), (
+            "ECMWF Open-data &  only provides forecast cycle for 00, 06, 12, 18 UTC"
+        )
 
     sanitize = creation_parameters.get("sanitize", True)
 
@@ -386,4 +529,11 @@ def get_data(
 
 
 if __name__ == "__main__":
-    pass
+    ds = get_data_influx(
+        retrieval_params=dict(
+            date='2025-10-01/2025-10-01',
+            time=['00:00'],
+            leadtime_hour=["0", "1", "2"],
+        )
+    )
+    print(ds)

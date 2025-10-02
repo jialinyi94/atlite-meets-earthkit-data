@@ -183,7 +183,7 @@ def get_data_influx(retrieval_params):
         sp = SolarPosition(ds, time_shift=time_shift)
     sp = sp.rename({v: f"solar_{v}" for v in sp.data_vars})
 
-    ds = xr.merge([ds, sp])
+    ds = xr.merge([ds, sp], compat="override")
 
     return ds
 

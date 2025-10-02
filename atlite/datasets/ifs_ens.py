@@ -81,8 +81,13 @@ def _rename_and_clean_coords(ds, add_lon_lat=True):
     """
     ds = ds.rename({"longitude": "x", "latitude": "y", "valid_time": "time"})
     # round coords since cds coords are float32 which would lead to mismatches
+    if (ds.x.min() >= 0) and (ds.x.max() > 180):
+        ds = ds.assign_coords(x=(((ds.x + 180) % 360) - 180))
+        lon=np.round(np.arange(-180.0, 180.0, 1.0), 2)
+        lat=np.round(np.arange(-90.0, 91.0, 1.0), 2)
+        ds = ds.interp(x=lon, y=lat)
     ds = ds.assign_coords(
-        x=np.round(ds.x.astype(float), 5), y=np.round(ds.y.astype(float), 5)
+        x=np.round(ds.x.astype(float), 2), y=np.round(ds.y.astype(float), 2)
     )
     ds = era5.maybe_swap_spatial_dims(ds)
     if add_lon_lat:

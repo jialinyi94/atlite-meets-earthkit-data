@@ -531,9 +531,9 @@ def get_data(
 if __name__ == "__main__":
     ds = get_data_influx(
         retrieval_params=dict(
-            date='2025-10-01/2025-10-01',
-            time=['00:00'],
-            leadtime_hour=["0", "1", "2"],
+            date='2025-10-01',
+            time=0,
+            step=3,
         )
     )
     print(ds)

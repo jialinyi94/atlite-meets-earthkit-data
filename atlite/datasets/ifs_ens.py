@@ -187,11 +187,11 @@ def retrieve_cams_data(
         "type": ['forecast'],
         "data_format": "grib",
     }
-    request.update(updates)
+    # request.update(updates)
+    request["variable"] = updates["variable"]
+    request["time"] = updates["time"]
+    request["leadtime_hour"] = updates["leadtime_hour"]
 
-    assert {"variable", "date", "time", "leadtime_hour"}.issubset(request), (
-        "Need to specify 'variable', 'date', 'time', and 'leadtime_hour' in the request"
-    )
     logger.debug(f"Retrieving {product} data with request: {request}")
 
     client = cdsapi.Client(

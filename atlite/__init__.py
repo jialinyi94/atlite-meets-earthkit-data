@@ -30,7 +30,8 @@ from atlite.gis import ExclusionContainer, compute_indicatormatrix, regrid
 from atlite.resource import cspinstallations, solarpanels, windturbines
 
 # e.g. "0.17.1" or "0.17.1.dev4+ga3890dc0" (if installed from git)
-__version__ = version("atlite")
+# __version__ = version("atlite")
+__version__ = "0.17.1.dev4+ga3890dc0"
 # e.g. "0.17.0" # TODO, in the network structure it should use the dev version
 match = re.match(r"(\d+\.\d+(\.\d+)?)", __version__)
 assert match, f"Could not determine release_version of pypsa: {__version__}"

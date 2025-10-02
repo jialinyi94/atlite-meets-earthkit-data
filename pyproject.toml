@@ -52,6 +52,9 @@ dependencies = [
     "earthkit (>=0.12.0,<0.13.0)",
     "ipykernel (>=6.30.1,<7.0.0)",
     "ecmwf-api-client (>=1.6.5,<2.0.0)",
+    "openmeteo-requests (>=1.7.3,<2.0.0)",
+    "requests-cache (>=1.2.1,<2.0.0)",
+    "retry-requests (>=2.0.0,<3.0.0)",
 ]
 
 [project.urls]
@@ -79,6 +82,11 @@ version_scheme = "no-guess-dev"
 
 [tool.setuptools.packages.find]
 include = ["atlite"]
+
+# Poetry settings
+
+[tool.poetry]
+version = "0.0.0"  # This will be overridden by setuptools_scm
 
 # Formatter and linter settings
 
@@ -122,4 +130,10 @@ ignore = [
     'D415', # First line should end with a period, question mark, or exclamation point
     'D417', # Missing argument descriptions in the docstring
 
+]
+
+[dependency-groups]
+examples = [
+    "pgeocode (>=0.5.0,<0.6.0)",
+    "seaborn (>=0.13.2,<0.14.0)"
 ]

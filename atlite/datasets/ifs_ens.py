@@ -19,9 +19,11 @@ from dask import compute, delayed
 from dask.array import arctan2, sqrt
 from dask.utils import SerializableLock
 from ecmwf.opendata import Client
+import cdsapi
 from numpy import atleast_1d
 
 import atlite.datasets.era5 as era5
+from atlite.pv.solar_position import SolarPosition
 
 # Null context for running a with statements wihout any context
 try:
@@ -42,8 +44,12 @@ features = {
     "height": ["height"],
     "wind": ["wnd100m", "wnd_shear_exp", "wnd_azimuth"],
     "influx": [
-        "ssrd",
+        "influx_toa",
+        "influx_direct",
+        "influx_diffuse",
         "albedo",
+        "solar_altitude",
+        "solar_azimuth",
     ],
     "temperature": ["temperature", "soil temperature", "dewpoint temperature"],
     "runoff": ["runoff"],
@@ -130,15 +136,93 @@ def get_data_influx(retrieval_params):
         **retrieval_params,
     )
 
+    ds_cams = retrieve_cams_data(
+        product="cams-global-atmospheric-composition-forecasts"
+        variable=[
+            "clear_sky_direct_solar_radiation_at_surface",
+            "toa_incident_solar_radiation"
+        ],
+        **retrieval_params,
+    )
+    ds_cams = era5._rename_and_clean_coords(ds_cams)
+    ds_cams = ds_cams.rename({"fdir": "influx_direct", "tisr": "influx_toa"})
+
     ds = _rename_and_clean_coords(ds)
     ds["albedo"] = (
         ((ds["ssrd"] - ds["ssr"]) / ds["ssrd"].where(ds["ssrd"] != 0))
         .fillna(0.0)
         .assign_attrs(units="(0 - 1)", long_name="Albedo")
     )
-    ds = ds.drop_vars("ssr")
+    ds["influx_diffuse"] = (ds["ssrd"] - ds_cams["influx_direct"]).assign_attrs(
+        units="J m**-2", long_name="Surface diffuse solar radiation downwards"
+    )
+    ds = ds.drop_vars(["ssrd", "ssr"])
+    # Convert from energy to power J m**-2 -> W m**-2 and clip negative fluxes
+    for a in ("influx_direct", "influx_diffuse", "influx_toa"):
+        ds[a] = ds[a] / (60.0 * 60.0)
+        ds[a].attrs["units"] = "W m**-2"
+
+    # ERA5 variables are mean values for previous hour, i.e. 13:01 to 14:00 are labelled as "14:00"
+    # account by calculating the SolarPosition for the center of the interval for aggregation happens
+    # see https://github.com/PyPSA/atlite/issues/158
+    # Do not show DeprecationWarning from new SolarPosition calculation (#199)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        time_shift = pd.to_timedelta("-30 minutes")
+        sp = SolarPosition(ds, time_shift=time_shift)
+    sp = sp.rename({v: f"solar_{v}" for v in sp.data_vars})
+
+    ds = xr.merge([ds, sp])
     return ds
 
+
+def retrieve_cams_data(
+    product: str,
+    chunks: dict[str, int] | None = None,
+    tmpdir: str | Path | None = None,
+    lock: SerializableLock | None = None,
+    **updates
+) -> xr.Dataset:
+    request = {
+        "type": ['forecast'],
+        "data_format": "grib",
+    }
+    request.update(updates)
+
+    assert {"variable", "date", "time", "leadtime_hour"}.issubset(request), (
+        "Need to specify 'variable', 'date', 'time', and 'leadtime_hour' in the request"
+    )
+    logger.debug(f"Retrieving {product} data with request: {request}")
+
+    client = cdsapi.Client(
+        info_callback=logger.debug, debug=logging.DEBUG >= logging.root.level
+    )
+    result = client.retrieve(product, request)
+
+    if lock is None:
+        lock = nullcontext()
+
+    suffix = f".{request['data_format']}"
+    with lock:
+        fd, target = mkstemp(suffix=suffix, dir=tmpdir)
+        os.close(fd)
+        
+        # Inform user about data being downloaded as "* variable (year-month)"
+        timestr = f"{request['date']} at {request['time']}"
+        variables = atleast_1d(request["variable"])
+        varstr = "\n\t".join([f"{v} ({timestr})" for v in variables])
+        logger.info(f"ADS: Downloading variables\n\t{varstr}\n")
+        result.download(target)
+
+    # Convert from grib to netcdf locally, same conversion as in CDS backend
+    if request["data_format"] == "grib":
+        ds = era5.open_with_grib_conventions(target, chunks=chunks, tmpdir=tmpdir)
+    else:
+        ds = xr.open_dataset(target, chunks=era5.sanitize_chunks(chunks))
+        if tmpdir is None:
+            era5.add_finalizer(target)
+
+    return ds
 
 def retrieve_data(
     model: str,

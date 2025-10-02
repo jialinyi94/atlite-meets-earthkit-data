@@ -137,7 +137,7 @@ def get_data_influx(retrieval_params):
     )
 
     ds_cams = retrieve_cams_data(
-        product="cams-global-atmospheric-composition-forecasts"
+        product="cams-global-atmospheric-composition-forecasts",
         variable=[
             "clear_sky_direct_solar_radiation_at_surface",
             "toa_incident_solar_radiation"

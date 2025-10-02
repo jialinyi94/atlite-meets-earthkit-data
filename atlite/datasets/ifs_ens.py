@@ -59,6 +59,9 @@ static_features = era5.static_features
 
 crs = era5.crs
 
+ecmwf_ifs_ens_lon = np.round(np.arange(-180.0, 180, 0.25), 5)
+ecmwf_ifs_ens_lat = np.round(np.arange(-90.0, 90.01, 0.25), 5)
+
 
 def get_ecmwf_ifs_steps_hours(cycle: int):
     first = list(range(0, 144 + 1, 3))
@@ -83,11 +86,10 @@ def _rename_and_clean_coords(ds, add_lon_lat=True):
     # round coords since cds coords are float32 which would lead to mismatches
     if (ds.x.min() >= 0) and (ds.x.max() > 180):
         ds = ds.assign_coords(x=(((ds.x + 180) % 360) - 180))
-        lon=np.round(np.arange(-180.0, 180.0, 1.0), 2)
-        lat=np.round(np.arange(-90.0, 91.0, 1.0), 2)
-        ds = ds.interp(x=lon, y=lat)
+
+        ds = ds.interp(x=ecmwf_ifs_ens_lon, y=ecmwf_ifs_ens_lat, method="linear")
     ds = ds.assign_coords(
-        x=np.round(ds.x.astype(float), 2), y=np.round(ds.y.astype(float), 2)
+        x=ecmwf_ifs_ens_lon, y=ecmwf_ifs_ens_lat
     )
     ds = era5.maybe_swap_spatial_dims(ds)
     if add_lon_lat:
@@ -509,9 +511,9 @@ def get_data(
     coords = cutout.coords
 
     if feature in static_features:
+        ds = retrieve_once(step_chunks[0])
         return (
-            retrieve_once(step_chunks[0])
-            .squeeze()
+            ds.squeeze()
             .sel(
                 x=slice(coords["x"].min().item(), coords["x"].max().item()),
                 y=slice(coords["y"].min().item(), coords["y"].max().item()),

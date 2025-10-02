@@ -84,7 +84,76 @@ include = ["atlite"]
 # Poetry settings
 
 [tool.poetry]
+name = "atlite"
 version = "0.0.0"  # This will be overridden by setuptools_scm
+description = "Library for fetching and converting weather data to power systems data"
+authors = ["Contributors to atlite <jonas.hoersch@posteo.de>"]
+license = "MIT"
+readme = "README.rst"
+homepage = "https://github.com/PyPSA/atlite"
+repository = "https://github.com/PyPSA/atlite"
+documentation = "https://atlite.readthedocs.io/en/latest/"
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+]
+packages = [{include = "atlite"}]
+
+
+[tool.poetry.dependencies]
+python = "^3.10"
+typing-extensions = "*"
+numpy = "*"
+scipy = "*"
+pandas = ">=0.25"
+bottleneck = "*"
+numexpr = "*"
+xarray = ">=2024.03.0"
+netcdf4 = "*"
+dask = ">=2021.10.0"
+toolz = "*"
+requests = "*"
+pyyaml = "*"
+rasterio = "!=1.4.0,!=1.4.1"
+shapely = "*"
+progressbar2 = "*"
+tqdm = "*"
+pyproj = ">=2"
+geopandas = ">=0.10.0"
+cdsapi = ">=0.7.4"
+cfgrib = ">=0.9.15.0"
+h5netcdf = ">=1.6.1"
+earthkit = ">=0.12.0,<0.13.0"
+ipykernel = ">=6.30.1,<7.0.0"
+ecmwf-api-client = ">=1.6.5,<2.0.0"
+polars = ">=1.33.1,<2.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pre-commit = "*"
+pytest = "*"
+pytest-cov = "*"
+matplotlib = "*"
+ruff = "*"
+
+[tool.poetry.group.docs.dependencies]
+numpydoc = "1.8.0"
+sphinx = "8.0.2"
+sphinx-book-theme = "1.1.3"
+nbsphinx = "0.9.5"
+nbsphinx-link = "1.3.0"
+docutils = "0.20"
+
+[tool.poetry.group.examples.dependencies]
+pgeocode = ">=0.5.0,<0.6.0"
+seaborn = ">=0.13.2,<0.14.0"
 
 # Formatter and linter settings
 
@@ -128,10 +197,4 @@ ignore = [
     'D415', # First line should end with a period, question mark, or exclamation point
     'D417', # Missing argument descriptions in the docstring
 
-]
-
-[dependency-groups]
-examples = [
-    "pgeocode (>=0.5.0,<0.6.0)",
-    "seaborn (>=0.13.2,<0.14.0)"
 ]

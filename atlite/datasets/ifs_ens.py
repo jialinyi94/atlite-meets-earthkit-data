@@ -343,7 +343,7 @@ def retrieve_cams_data(
         os.close(fd)
 
         # Inform user about data being downloaded as "* variable (year-month)"
-        timestr = f"{request['date']}"
+        timestr = f"ForecastAt: {request['date']}T{request['time']}z, Step: {request['step']}h"
         variables = atleast_1d(request["variable"])
         varstr = "\n\t".join([f"{v} ({timestr})" for v in variables])
         logger.info(f"ADS: Downloading variables\n\t{varstr}\n")

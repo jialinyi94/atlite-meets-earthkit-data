@@ -164,7 +164,7 @@ def get_data_influx(retrieval_params):
 
     ds = _rename_and_clean_coords(ds)
 
-    ds = ds.rename({"fdir": "influx_direct", "tisr": "influx_toa"})
+    ds = ds.rename({"cdir": "influx_direct", "tisr": "influx_toa"})
     ds["albedo"] = (
         ((ds["ssrd"] - ds["ssr"]) / ds["ssrd"].where(ds["ssrd"] != 0))
         .fillna(0.0)
